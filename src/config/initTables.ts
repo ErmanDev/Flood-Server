@@ -1,5 +1,4 @@
 import { getConnection } from './db';
-import bcrypt from 'bcryptjs';
 
 export const initTables = async () => {
   const connection = getConnection();
@@ -41,32 +40,6 @@ export const initTables = async () => {
       FOR EACH ROW
       EXECUTE FUNCTION update_updated_at_column();
     `);
-    
-    // Insert default admin user if not exists
-    const defaultPasswordHash = bcrypt.hashSync('admin123', 10);
-    
-    const result = await connection.query(
-      'SELECT _id FROM users WHERE email = $1',
-      ['admin@gmail.com']
-    );
-    
-    if (result.rows.length === 0) {
-      await connection.query(`
-        INSERT INTO users (_id, username, email, password, "firstName", "lastName", phone, address, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      `, [
-        '1',
-        'Admin',
-        'admin@gmail.com',
-        defaultPasswordHash,
-        'System',
-        'Admin',
-        '123-456-7890',
-        '123 Admin St, City, Country',
-        'Verified'
-      ]);
-      console.log('Default admin user created');
-    }
     
     console.log('Database tables initialized successfully (Users table only)');
   } catch (error: any) {
