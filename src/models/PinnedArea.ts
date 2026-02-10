@@ -1,3 +1,4 @@
+import { getConnection } from '../config/db';
 
 interface IPinnedArea {
     _id: string;
@@ -8,39 +9,66 @@ interface IPinnedArea {
     userId: string | null;
 }
 
-// In-memory data store
-const pinnedAreas: IPinnedArea[] = [];
-
 class PinnedArea {
     static async find(query: any = {}): Promise<IPinnedArea[]> {
-        return pinnedAreas;
+        const connection = getConnection();
+        const result = await connection.query('SELECT * FROM pinned_areas ORDER BY timestamp DESC');
+        return result.rows.map((row: any) => ({
+            _id: row._id,
+            latitude: parseFloat(row.latitude),
+            longitude: parseFloat(row.longitude),
+            address: row.address,
+            timestamp: row.timestamp,
+            userId: row.userId
+        }));
     }
 
     static async create(data: any): Promise<IPinnedArea> {
-        const newArea: IPinnedArea = {
-            _id: Math.random().toString(36).substr(2, 9),
-            latitude: data.latitude,
-            longitude: data.longitude,
-            address: data.address || null,
-            timestamp: new Date(),
-            userId: data.userId || null
+        const connection = getConnection();
+        const _id = Math.random().toString(36).substr(2, 9);
+        
+        await connection.query(
+            `INSERT INTO pinned_areas (_id, latitude, longitude, address, "userId")
+             VALUES ($1, $2, $3, $4, $5)`,
+            [_id, data.latitude, data.longitude, data.address || null, data.userId || null]
+        );
+        
+        const result = await connection.query('SELECT * FROM pinned_areas WHERE _id = $1', [_id]);
+        const row = result.rows[0];
+        return {
+            _id: row._id,
+            latitude: parseFloat(row.latitude),
+            longitude: parseFloat(row.longitude),
+            address: row.address,
+            timestamp: row.timestamp,
+            userId: row.userId
         };
-        pinnedAreas.push(newArea);
-        return newArea;
     }
 
     static async findByIdAndDelete(id: string): Promise<IPinnedArea | null> {
-        const index = pinnedAreas.findIndex(p => p._id === id);
-        if (index !== -1) {
-            const deleted = pinnedAreas[index];
-            pinnedAreas.splice(index, 1);
-            return deleted;
+        const connection = getConnection();
+        const result = await connection.query('SELECT * FROM pinned_areas WHERE _id = $1', [id]);
+        
+        if (result.rows.length === 0) {
+            return null;
         }
-        return null;
+        
+        await connection.query('DELETE FROM pinned_areas WHERE _id = $1', [id]);
+        const row = result.rows[0];
+        return {
+            _id: row._id,
+            latitude: parseFloat(row.latitude),
+            longitude: parseFloat(row.longitude),
+            address: row.address,
+            timestamp: row.timestamp,
+            userId: row.userId
+        };
     }
 
     static async countDocuments(): Promise<number> {
-        return pinnedAreas.length;
+        const connection = getConnection();
+        const result = await connection.query('SELECT COUNT(*) as count FROM pinned_areas');
+        return parseInt(result.rows[0].count);
     }
 }
 

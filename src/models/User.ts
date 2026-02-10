@@ -1,25 +1,5 @@
 import bcrypt from 'bcryptjs';
-
-// In-memory data store for users
-// WARNING: Data will be lost when the server restarts
-const defaultPasswordHash = bcrypt.hashSync('admin123', 10);
-
-const users: any[] = [
-    {
-        _id: '1',
-        username: 'Admin',
-        email: 'admin@gmail.com',
-        firstName: 'System',
-        lastName: 'Admin',
-        phone: '123-456-7890',
-        address: '123 Admin St, City, Country',
-        profileImage: 'https://avataaars.io/?avatarStyle=Circle&topType=ShortHairShortFlat&accessoriesType=Sunglasses&hairColor=Black&facialHairType=BeardLight&facialHairColor=Black&clotheType=Hoodie&clotheColor=Red&eyeType=Happy&eyebrowType=Default&mouthType=Default&skinColor=Light',
-        status: 'Verified',
-        password: defaultPasswordHash,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    }
-];
+import { getConnection } from '../config/db';
 
 class User {
     _id: string;
@@ -51,57 +31,67 @@ class User {
     }
 
     static async findOne(query: { email?: string; username?: string }): Promise<User | null> {
-        const user = users.find((u) =>
-            (query.email && u.email === query.email) ||
-            (query.username && u.username === query.username)
-        );
-        return user ? new User(user) : null;
+        const connection = getConnection();
+        let sql = 'SELECT * FROM users WHERE ';
+        const conditions: string[] = [];
+        const values: any[] = [];
+        let paramCount = 1;
+        
+        if (query.email) {
+            conditions.push(`email = $${paramCount}`);
+            values.push(query.email);
+            paramCount++;
+        }
+        if (query.username) {
+            conditions.push(`username = $${paramCount}`);
+            values.push(query.username);
+            paramCount++;
+        }
+        
+        sql += conditions.join(' OR ');
+        
+        const result = await connection.query(sql, values);
+        return result.rows.length > 0 ? new User(result.rows[0]) : null;
     }
 
     static async findAll(): Promise<User[]> {
-        return users.map(user => new User(user));
+        const connection = getConnection();
+        const result = await connection.query('SELECT * FROM users');
+        return result.rows.map((row: any) => new User(row));
     }
 
     static async create(data: { username: string; email: string; password: string; firstName?: string; lastName?: string; phone?: string; address?: string; profileImage?: string }): Promise<User> {
-        // Verify unique email
-        if (users.find(u => u.email === data.email)) {
+        const connection = getConnection();
+        
+        // Check if user exists
+        const existing = await User.findOne({ email: data.email });
+        if (existing) {
             throw new Error('User already exists');
         }
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(data.password, salt);
+        const _id = Math.random().toString(36).substr(2, 9);
 
-        const newUser = {
-            _id: Math.random().toString(36).substr(2, 9),
-            username: data.username,
-            email: data.email,
-            firstName: data.firstName || '',
-            lastName: data.lastName || '',
-            phone: data.phone || '',
-            address: data.address || '',
-            profileImage: data.profileImage || '',
-            status: 'Pending Verification',
-            password: hashedPassword,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        };
+        await connection.query(
+            `INSERT INTO users (_id, username, email, password, "firstName", "lastName", phone, address, "profileImage", status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [_id, data.username, data.email, hashedPassword, data.firstName || '', data.lastName || '', data.phone || '', data.address || '', data.profileImage || '', 'Pending Verification']
+        );
 
-        users.push(newUser);
-        return new User(newUser);
+        return await User.findOne({ email: data.email }) as User;
     }
+
     static async findById(id: string): Promise<User | null> {
-        const user = users.find((u) => u._id === id);
-        return user ? new User(user) : null;
+        const connection = getConnection();
+        const result = await connection.query('SELECT * FROM users WHERE _id = $1', [id]);
+        return result.rows.length > 0 ? new User(result.rows[0]) : null;
     }
 
     static async updateStatus(id: string, status: string): Promise<User | null> {
-        const userIndex = users.findIndex((u) => u._id === id);
-        if (userIndex === -1) return null;
-
-        users[userIndex].status = status;
-        users[userIndex].updatedAt = new Date();
-
-        return new User(users[userIndex]);
+        const connection = getConnection();
+        await connection.query('UPDATE users SET status = $1 WHERE _id = $2', [status, id]);
+        return await User.findById(id);
     }
 }
 

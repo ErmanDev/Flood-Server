@@ -1,3 +1,4 @@
+import { getConnection } from '../config/db';
 
 interface ISensorReading {
     _id: string;
@@ -10,45 +11,92 @@ interface ISensorReading {
     server_timestamp: Date | null;
 }
 
-// In-memory store with some history
-const readings: ISensorReading[] = [];
-
 class SensorReading {
     static async find(query: any = {}, options: any = {}): Promise<ISensorReading[]> {
-        let result = [...readings];
-        // sort desc
-        result.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
+        const connection = getConnection();
+        let sql = 'SELECT * FROM sensor_readings';
+        const values: any[] = [];
+        let paramCount = 1;
+        
+        sql += ' ORDER BY timestamp DESC';
+        
         if (options.limit) {
-            result = result.slice(0, options.limit);
+            sql += ` LIMIT $${paramCount}`;
+            values.push(options.limit);
         }
-        return result;
+        
+        const result = await connection.query(sql, values);
+        return result.rows.map((row: any) => ({
+            _id: row._id,
+            distance: row.distance ? parseFloat(row.distance) : null,
+            distance_ft: row.distance_ft ? parseFloat(row.distance_ft) : null,
+            water_level_cm: row.water_level_cm ? parseFloat(row.water_level_cm) : null,
+            water_level_ft: row.water_level_ft ? parseFloat(row.water_level_ft) : null,
+            timestamp: row.timestamp,
+            source: row.source || 'sensor',
+            server_timestamp: row.server_timestamp
+        }));
     }
 
     static async findOne(query: any = {}, options: any = {}): Promise<ISensorReading | undefined> {
-        // e.g. sort: { timestamp: -1 }
-        const sorted = [...readings].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-        return sorted[0];
+        const connection = getConnection();
+        const result = await connection.query(
+            'SELECT * FROM sensor_readings ORDER BY timestamp DESC LIMIT 1'
+        );
+        
+        if (result.rows.length === 0) {
+            return undefined;
+        }
+        
+        const row = result.rows[0];
+        return {
+            _id: row._id,
+            distance: row.distance ? parseFloat(row.distance) : null,
+            distance_ft: row.distance_ft ? parseFloat(row.distance_ft) : null,
+            water_level_cm: row.water_level_cm ? parseFloat(row.water_level_cm) : null,
+            water_level_ft: row.water_level_ft ? parseFloat(row.water_level_ft) : null,
+            timestamp: row.timestamp,
+            source: row.source || 'sensor',
+            server_timestamp: row.server_timestamp
+        };
     }
 
     static async create(data: any): Promise<ISensorReading> {
-        const newReading: ISensorReading = {
-            _id: Math.random().toString(36).substr(2, 9),
-            distance: data.distance,
-            distance_ft: data.distance_ft,
-            water_level_cm: data.water_level_cm,
-            water_level_ft: data.water_level_ft,
-            timestamp: new Date(),
-            source: data.source || 'sensor',
-            server_timestamp: new Date()
+        const connection = getConnection();
+        const _id = Math.random().toString(36).substr(2, 9);
+        
+        await connection.query(
+            `INSERT INTO sensor_readings (_id, distance, distance_ft, water_level_cm, water_level_ft, source, server_timestamp)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+                _id,
+                data.distance || null,
+                data.distance_ft || null,
+                data.water_level_cm || null,
+                data.water_level_ft || null,
+                data.source || 'sensor',
+                new Date()
+            ]
+        );
+        
+        const result = await connection.query('SELECT * FROM sensor_readings WHERE _id = $1', [_id]);
+        const row = result.rows[0];
+        return {
+            _id: row._id,
+            distance: row.distance ? parseFloat(row.distance) : null,
+            distance_ft: row.distance_ft ? parseFloat(row.distance_ft) : null,
+            water_level_cm: row.water_level_cm ? parseFloat(row.water_level_cm) : null,
+            water_level_ft: row.water_level_ft ? parseFloat(row.water_level_ft) : null,
+            timestamp: row.timestamp,
+            source: row.source || 'sensor',
+            server_timestamp: row.server_timestamp
         };
-        readings.unshift(newReading); // add to start
-        if (readings.length > 1000) readings.pop(); // limit size
-        return newReading;
     }
 
     static async countDocuments(): Promise<number> {
-        return readings.length;
+        const connection = getConnection();
+        const result = await connection.query('SELECT COUNT(*) as count FROM sensor_readings');
+        return parseInt(result.rows[0].count);
     }
 }
 
