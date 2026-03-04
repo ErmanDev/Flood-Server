@@ -48,8 +48,21 @@ export const loginUser = async (req: Request, res: Response) => {
     const { email, username, password } = req.body;
 
     try {
-        // Find by email or username
-        const user = await User.findOne({ email, username });
+        // Find by email or username (whichever is provided)
+        const query: { email?: string; username?: string } = {};
+        if (email) {
+            query.email = email;
+        }
+        if (username) {
+            query.username = username;
+        }
+
+        if (!query.email && !query.username) {
+            res.status(400).json({ message: 'Email or username is required' });
+            return;
+        }
+
+        const user = await User.findOne(query);
 
         if (user && (await user.matchPassword(password))) {
             res.json({

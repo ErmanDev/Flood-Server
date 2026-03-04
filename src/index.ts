@@ -13,7 +13,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Initialize database connection and tables
+
 createConnection();
 initTables().catch((error: any) => {
   console.error('Failed to initialize database:', error);
